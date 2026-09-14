@@ -1,0 +1,29 @@
+{
+  "name": "moonlight-garden-handytools",
+  "version": "0.1.0",
+  "description": "Independent MCP handy tools for Moonlight Garden.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "moonlight-garden-handytools": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": ["dist", "README.md", "LICENSE", "config.example.json", "recipe-ledger.example.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test test/**/*.test.ts"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.6",
+    "typescript": "^7.0.2"
+  }
+}

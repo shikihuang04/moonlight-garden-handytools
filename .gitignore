@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.DS_Store
+*.log
+moonlight-garden-handytools.config.json
+moonlight-garden-expensive-recipes.md
+moonlight-garden-expensive-recipes.md.bak
+daily-routine-state.json
+daily-routine-state.json.lock

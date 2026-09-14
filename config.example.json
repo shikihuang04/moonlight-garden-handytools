@@ -1,0 +1,12 @@
+{
+  "profileId": "default",
+  "enabledTools": ["daily_routine", "farm_brief", "recipe_check"],
+  "recipeLedger": {
+    "enabledInDailyRoutine": true,
+    "directory": null,
+    "fileName": "moonlight-garden-expensive-recipes.md"
+  },
+  "farmBrief": {
+    "cabbagePlantGapFormula": "chickenCount * 2 - cabbageInInventory"
+  }
+}
