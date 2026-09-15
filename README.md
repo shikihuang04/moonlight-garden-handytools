@@ -1,5 +1,7 @@
 # moonlight-garden-handytools
 
+月光花园游戏地址：https://moonlightgarden.space/
+
 一组独立、非官方的月光花园 MCP 小工具。它通过用户自己的月光花园 MCP 连接工作，不负责创建账号或提供连接凭据。
 
 本项目仅用于减少 Agent 执行花园日常时的工具调用次数，并聚合、精简返回数据；工具不会自行运行，也不代替 Agent 或用户作出游戏决策。
