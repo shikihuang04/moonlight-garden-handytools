@@ -9,7 +9,7 @@
     "moonlight-garden-handytools": "dist/index.js"
   },
   "main": "dist/index.js",
-  "files": ["dist", "README.md", "LICENSE", "config.example.json", "recipe-ledger.example.md"],
+  "files": ["dist", "scripts/call-tool.mjs", "README.md", "LICENSE", "config.example.json", "recipe-ledger.example.md"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",

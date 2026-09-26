@@ -84,44 +84,77 @@ cp config.example.json moonlight-garden-handytools.config.json
 
 如果你的连接不需要 Bearer token，请把整个 `MOONLIGHT_GARDEN_MCP_TOKEN` 条目删除，不要填写示例文字。保存后重载或重启 MCP 客户端。
 
-### Operit：环境变量未生效时的启动绕过方式
+### Operit：工具面板无法接入时，通过终端调用
 
-已有 [Operit 1.12.2（versionCode 51）用户报告](https://github.com/shikihuang04/moonlight-garden-handytools/issues/1)：在 Android / proot Ubuntu、Node.js v20.20.2 环境中接入本地插件时遇到“验证失败”，并在不传环境变量、直接启动入口时复现了以下错误：
+**这是绕过工具面板的另一种调用方式，不是修复 Operit 管理页。** [Operit 1.12.2（versionCode 51）的反馈](https://github.com/shikihuang04/moonlight-garden-handytools/issues/1)来自 Android / proot Ubuntu、Node.js v20.20.2：管理页仍“验证失败”，工具没有进入 Agent 的可用列表；反馈者通过自己的终端脚本成功调用过 `farm_brief`，但没有验证另外两个工具。
 
-```text
-MOONLIGHT_GARDEN_MCP_URL is required.
+下面使用本仓库提供的 [scripts/call-tool.mjs](scripts/call-tool.mjs)，不需要反馈者的私人脚本。它完成 MCP 连接、调用一次指定工具、输出结果并关闭连接，不自动重试，也不会注册到 Operit 的工具面板。此示例已在本地 macOS / Node.js 24 上用真实 stdio 服务和模拟花园验证；**尚未在 Android / Operit 上实测本示例**。已能正常接入或已有可用绕行脚本的用户，无需更换。
+
+#### 1. 准备运行目录与凭据
+
+使用 Linux 终端中已完成 `npm ci`、`npm run build` 的项目目录，其中应有 `dist/index.js`、`node_modules/` 和 `scripts/call-tool.mjs`。第一次安装按上方“要求与安装”操作。旧版已构建成功的用户，只需在同一项目添加本仓库的 `scripts/call-tool.mjs`；不要覆盖现有配置或运行数据。
+
+以下命令均在该项目目录执行，不在 Android 下载目录的另一份副本操作。不需要重装 Operit、修改 `mcp_config.json`、移动账本或修改其他插件。
+
+在项目根目录用本地编辑器创建 `.env`，填入自己的连接信息（不要把真实凭据贴进聊天或终端命令历史）：
+
+```dotenv
+MOONLIGHT_GARDEN_MCP_URL="https://your-moonlight-garden-mcp.example/mcp"
+# 不需要 Bearer token 时省略下一行。
+MOONLIGHT_GARDEN_MCP_TOKEN="your-token-if-required"
 ```
-
-这表示该次启动进程没有取得非空的 `MOONLIGHT_GARDEN_MCP_URL`。[Operit 官方配置说明](https://github.com/AAswordman/OperitWeb/blob/main/public/content/en/tools-and-features/ai-tools/mcp.md)使用的字段也是 `mcpServers.<实际插件ID>.env`；目前记录的是上述版本的用户反馈，尚未确认原配置未生效的具体原因或其他版本是否受影响。
-
-遇到此问题时，可以用本地启动脚本设置环境变量。反馈用户通过这种方式恢复了 `initialize` 握手；这项反馈尚不代表三个工具或上游花园连接都已验证通过。已经使用标准配置正常运行的用户无需调整。
-
-在 Operit 的 Linux 插件运行目录（通常是 `~/mcp_plugins/<插件短名称>`，包含 `dist/index.js` 的目录）创建 `run.sh`，填入你自己的连接地址：
 
 ```sh
-#!/bin/sh
-set -eu
-cd -- "$(dirname -- "$0")"
-
-export MOONLIGHT_GARDEN_MCP_URL='https://your-moonlight-garden-mcp.example/mcp'
-# 仅在连接需要 Bearer token 时取消下一行注释，并替换为真实值。
-# export MOONLIGHT_GARDEN_MCP_TOKEN='your-token-if-required'
-
-exec node dist/index.js "$@"
+chmod 600 .env
 ```
 
-在现有 `mcpServers.<实际插件ID>` 条目中，将启动字段改为以下内容，保留原插件 ID 和其他设置：
+`.env` 只保留在本机，已加入本仓库忽略规则；不要分享或提交。下方 `--env-file` 写法需要 **Node.js 20.6 或更新版本**。如果终端进程环境里已经正确设置了这两个变量，可以省略 `--env-file=.env`；已有进程环境变量优先于 `.env`，切换账号时要留意旧值。
 
-```json
-"command": "sh",
-"args": ["run.sh", "--config", "moonlight-garden-handytools.config.json"]
+下方 `--config` 必须指向你原本使用的配置文件，继续使用相同的 `profileId` 和数据目录，才能共用贵菜账与每日幂等记录。没有自建配置、且一直使用默认配置的用户可以省略 `--config` 及其值；不要为了绕行重新创建一个 profile。
+
+#### 2. 列工具与查看农场
+
+只列出当前配置启用的工具，不调用上游花园：
+
+```sh
+node --env-file=.env scripts/call-tool.mjs list --config moonlight-garden-handytools.config.json
 ```
 
-以上是条目内的字段片段。配置文件名应指向运行目录中实际存在的文件；如果你一直使用默认配置，没有自建配置文件，`args` 写成 `["run.sh"]` 即可。脚本与配置应放在 Linux 运行目录，不使用 Android 的 `/sdcard/...` 路径。保存后重载该插件。
+需要查看农场时，单次调用只读 `farm_brief`：
 
-`run.sh` 含有你的连接凭据，只保留在本机，不要提交或分享；本仓库已忽略根目录的 `run.sh`。可执行 `chmod 600 run.sh` 限制读取权限，通过 `sh run.sh` 启动无需执行权限。不要在脚本里打印 URL/token，也不要开启 `set -x`；标准输出留给 MCP 协议使用。若重新部署替换了运行目录，需要恢复自己的脚本和配置。
+```sh
+node --env-file=.env scripts/call-tool.mjs farm_brief --config moonlight-garden-handytools.config.json
+```
 
-如需恢复标准启动方式，将 `command/args` 改回原来的 `node` 入口，并在对应的 `env` 中配置连接信息即可。反馈问题时，提供 Operit 版本号及已有的失败日志即可，隐藏 URL/token；已通过脚本恢复的用户无需为了报错再次复现。
+`list` 成功只证明本地连接与工具发现成功；`farm_brief` 返回实际农场状态且没有对应来源的 `errors`，才证明那些来源查询成功。已经有实测结果的用户不必为反馈重复调用。
+
+若让 Agent 代为执行，需要它本身有终端执行能力及相应授权。可告诉它：“在我的 Linux 插件目录运行上面的 `farm_brief` 命令，读取 JSON 结果；不要调用 `daily_routine`。”这仍是终端命令，不是 Operit 工具列表中的直接调用，不会自动获得额外权限。
+
+#### 3. 其他工具：仅在确实需要时调用
+
+检查菜谱（依赖现有本地贵菜账；背包查询可能自动领取待领礼物，详见下方 `recipe_check` 说明）：
+
+```sh
+node --env-file=.env scripts/call-tool.mjs recipe_check --config moonlight-garden-handytools.config.json
+```
+
+**以下命令会真实打工、买鱼饵、钓鱼，并可能更新贵菜账。不要把它当接入测试。** 仅在用户或 Agent 确实要执行整套日常时使用：
+
+```sh
+node --env-file=.env scripts/call-tool.mjs daily_routine --config moonlight-garden-handytools.config.json
+```
+
+它仍复用原工具的启用开关、UTC 幂等保护和失败处理，不是另一套日常逻辑。需要处理 `needs_resolution` 时，可用 `--args` 传入 JSON 对象；例如 `--args '{"resolveUnknown":"assume_completed"}'`。**只能在用户已理解风险并明确选择该恢复方式后添加**，不能由 Agent 为了让命令成功而自行选择，详见“网络结果不确定时”。
+
+#### 4. 看结果与失败边界
+
+- 标准输出是完整 MCP 结果 JSON：`structuredContent` 是工具数据，`content` 保留原始文本结果；失败时仍保留工具已经返回的成功部分。
+- `isError: true` 时退出码为 1；参数、启动或连接失败也返回非零退出码，错误写到标准错误。不要只看有没有 JSON，还要看 `errors`、`status` 和 `failedStep`。
+- 调用最多等待 5 分钟，不自动重试。超时、断线或手动中断不代表游戏动作没有发生；不要盲目重复日常或删除幂等文件，应按原工具的未知结果恢复规则处理。
+- `MOONLIGHT_GARDEN_MCP_URL is required.` 表示启动进程缺少必填地址，本身不能证明 Operit 有环境变量传递故障。检查当前环境或 `.env`，不需要公开凭据。
+- `run.sh` 如果仅执行 `node dist/index.js`，只是启动服务，不会替你完成单次工具调用；不要将它与本节的调用示例混淆，也不要执行 `node dist/index.js farm_brief` 来代替调用示例。
+
+停止使用绕行方式时，不再执行这些命令即可；没有额外后台服务或定时任务需要卸载，正常 MCP 接入配置也未被修改。
 
 ## 配置
 
