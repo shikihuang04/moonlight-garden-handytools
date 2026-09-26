@@ -86,13 +86,13 @@ cp config.example.json moonlight-garden-handytools.config.json
 
 ### Operit：环境变量未生效时的启动绕过方式
 
-有用户反馈，在 Operit 接入本地插件时遇到“验证失败”，并在不传环境变量、直接启动入口时复现了以下错误：
+已有 [Operit 1.12.2（versionCode 51）用户报告](https://github.com/shikihuang04/moonlight-garden-handytools/issues/1)：在 Android / proot Ubuntu、Node.js v20.20.2 环境中接入本地插件时遇到“验证失败”，并在不传环境变量、直接启动入口时复现了以下错误：
 
 ```text
 MOONLIGHT_GARDEN_MCP_URL is required.
 ```
 
-这表示该次启动进程没有取得非空的 `MOONLIGHT_GARDEN_MCP_URL`。[Operit 官方配置说明](https://github.com/AAswordman/OperitWeb/blob/main/public/content/en/tools-and-features/ai-tools/mcp.md)使用的字段也是 `mcpServers.<实际插件ID>.env`；目前尚未确认受影响的 Operit 版本及原配置未生效的具体原因。
+这表示该次启动进程没有取得非空的 `MOONLIGHT_GARDEN_MCP_URL`。[Operit 官方配置说明](https://github.com/AAswordman/OperitWeb/blob/main/public/content/en/tools-and-features/ai-tools/mcp.md)使用的字段也是 `mcpServers.<实际插件ID>.env`；目前记录的是上述版本的用户反馈，尚未确认原配置未生效的具体原因或其他版本是否受影响。
 
 遇到此问题时，可以用本地启动脚本设置环境变量。反馈用户通过这种方式恢复了 `initialize` 握手；这项反馈尚不代表三个工具或上游花园连接都已验证通过。已经使用标准配置正常运行的用户无需调整。
 
