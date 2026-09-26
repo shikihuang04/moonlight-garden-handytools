@@ -84,6 +84,45 @@ cp config.example.json moonlight-garden-handytools.config.json
 
 如果你的连接不需要 Bearer token，请把整个 `MOONLIGHT_GARDEN_MCP_TOKEN` 条目删除，不要填写示例文字。保存后重载或重启 MCP 客户端。
 
+### Operit：环境变量未生效时的启动绕过方式
+
+有用户反馈，在 Operit 接入本地插件时遇到“验证失败”，并在不传环境变量、直接启动入口时复现了以下错误：
+
+```text
+MOONLIGHT_GARDEN_MCP_URL is required.
+```
+
+这表示该次启动进程没有取得非空的 `MOONLIGHT_GARDEN_MCP_URL`。[Operit 官方配置说明](https://github.com/AAswordman/OperitWeb/blob/main/public/content/en/tools-and-features/ai-tools/mcp.md)使用的字段也是 `mcpServers.<实际插件ID>.env`；目前尚未确认受影响的 Operit 版本及原配置未生效的具体原因。
+
+遇到此问题时，可以用本地启动脚本设置环境变量。反馈用户通过这种方式恢复了 `initialize` 握手；这项反馈尚不代表三个工具或上游花园连接都已验证通过。已经使用标准配置正常运行的用户无需调整。
+
+在 Operit 的 Linux 插件运行目录（通常是 `~/mcp_plugins/<插件短名称>`，包含 `dist/index.js` 的目录）创建 `run.sh`，填入你自己的连接地址：
+
+```sh
+#!/bin/sh
+set -eu
+cd -- "$(dirname -- "$0")"
+
+export MOONLIGHT_GARDEN_MCP_URL='https://your-moonlight-garden-mcp.example/mcp'
+# 仅在连接需要 Bearer token 时取消下一行注释，并替换为真实值。
+# export MOONLIGHT_GARDEN_MCP_TOKEN='your-token-if-required'
+
+exec node dist/index.js "$@"
+```
+
+在现有 `mcpServers.<实际插件ID>` 条目中，将启动字段改为以下内容，保留原插件 ID 和其他设置：
+
+```json
+"command": "sh",
+"args": ["run.sh", "--config", "moonlight-garden-handytools.config.json"]
+```
+
+以上是条目内的字段片段。配置文件名应指向运行目录中实际存在的文件；如果你一直使用默认配置，没有自建配置文件，`args` 写成 `["run.sh"]` 即可。脚本与配置应放在 Linux 运行目录，不使用 Android 的 `/sdcard/...` 路径。保存后重载该插件。
+
+`run.sh` 含有你的连接凭据，只保留在本机，不要提交或分享；本仓库已忽略根目录的 `run.sh`。可执行 `chmod 600 run.sh` 限制读取权限，通过 `sh run.sh` 启动无需执行权限。不要在脚本里打印 URL/token，也不要开启 `set -x`；标准输出留给 MCP 协议使用。若重新部署替换了运行目录，需要恢复自己的脚本和配置。
+
+如需恢复标准启动方式，将 `command/args` 改回原来的 `node` 入口，并在对应的 `env` 中配置连接信息即可。反馈问题时，提供 Operit 版本号及已有的失败日志即可，隐藏 URL/token；已通过脚本恢复的用户无需为了报错再次复现。
+
 ## 配置
 
 ```json
