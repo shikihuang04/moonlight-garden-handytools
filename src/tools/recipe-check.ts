@@ -119,11 +119,10 @@ export async function runRecipeCheck({
       const latestData = parseToolData(await gateway.callTool("kitchen", { command: "recipes 50" }));
       if (!Array.isArray(latestData.recipes)) throw new Error();
       const latest = latestData.recipes.map(recipeFromUpstream);
-      const ledgerIds = new Set(ledger.map((recipe) => recipe.dishItemId));
-      const combined = [
+      const combined = [...new Map([
         ...ledger.map((recipe) => ({ recipe, source: "ledger" as const })),
-        ...latest.filter((recipe) => !ledgerIds.has(recipe.dishItemId)).map((recipe) => ({ recipe, source: "latest50Fallback" as const })),
-      ];
+        ...latest.map((recipe) => ({ recipe, source: "latest50Fallback" as const })),
+      ].map((entry) => [entry.recipe.dishItemId, entry])).values()];
       evaluation = evaluateRecipes(combined, undefined, references, inventoryById);
     } catch {
       errors.latest50Fallback = "The latest 50 recipes could not be fetched or validated.";
@@ -148,12 +147,15 @@ function readRemainingCooks(data: Record<string, unknown>): number {
 
 function readInventory(data: Record<string, unknown>): InventoryItem[] {
   if (!Array.isArray(data.items)) throw new Error();
-  return data.items.map((value) => {
+  const seen = new Set<string>();
+  return data.items.flatMap((value): InventoryItem[] => {
     const row = asObject(value);
-    if (!row || typeof row.item !== "string" || typeof row.name !== "string" ||
-        !Number.isInteger(row.quantity) || (row.quantity as number) < 0 ||
-        typeof row.sell_value !== "number" || !Number.isFinite(row.sell_value)) throw new Error();
-    return { itemId: row.item, name: row.name, quantity: row.quantity as number, sellValue: row.sell_value };
+    if (!row || typeof row.item !== "string" || !row.item || typeof row.name !== "string" || !row.name) throw new Error();
+    if (!isIngredientId(row.item)) return [];
+    if (seen.has(row.item) || !Number.isInteger(row.quantity) || (row.quantity as number) < 0 ||
+        typeof row.sell_value !== "number" || !Number.isFinite(row.sell_value) || row.sell_value < 0) throw new Error();
+    seen.add(row.item);
+    return [{ itemId: row.item, name: row.name, quantity: row.quantity as number, sellValue: row.sell_value }];
   });
 }
 
@@ -209,19 +211,32 @@ function evaluateRecipes(
   for (const entry of recipes) {
     const recipe = "recipe" in entry ? entry.recipe : entry;
     const source = "recipe" in entry ? entry.source : defaultSource as CandidateSource;
-    const duplicateNames = recipe.ingredientNames.filter((name, index, all) => all.indexOf(name) !== index);
-    const unresolvedNames = [...new Set([...duplicateNames, ...recipe.ingredientNames.filter((name) => (references.get(name)?.length ?? 0) !== 1)])];
-    if (unresolvedNames.length > 0) {
-      unresolved.push({ names: unresolvedNames });
+    const mapped = recipe.ingredientNames.map((name): ItemReference | undefined => {
+      if (isIngredientId(name)) {
+        const held = inventory.get(name);
+        if (held) return held;
+        const match = [...references.values()].flat().find((row) => row.itemId === name);
+        return match ?? { itemId: name, name, sellValue: null };
+      }
+      const matches = references.get(name);
+      const reference = matches?.length === 1 ? matches[0] : undefined;
+      return reference ? inventory.get(reference.itemId) ?? reference : undefined;
+    });
+    const unresolvedNames = recipe.ingredientNames.filter((_name, index) => {
+      const item = mapped[index];
+      return !item || mapped.some((other, otherIndex) => otherIndex !== index && other?.itemId === item.itemId);
+    });
+    if (unresolvedNames.length > 0 || recipe.ingredientNames.length === 0) {
+      unresolved.push({ names: [...new Set(unresolvedNames)] });
       continue;
     }
-    const mapped = recipe.ingredientNames.map((name) => references.get(name)?.[0] as ItemReference);
-    const missing = mapped.filter((item) => (inventory.get(item.itemId)?.quantity ?? 0) < 1);
-    const ingredientSellValue = mapped.every((item) => item.sellValue !== null) ? mapped.reduce<number>((sum, item) => sum + (item.sellValue as number), 0) : null;
+    const ingredients = mapped as ItemReference[];
+    const missing = ingredients.filter((item) => (inventory.get(item.itemId)?.quantity ?? 0) < 1);
+    const ingredientSellValue = ingredients.every((item) => item.sellValue !== null) ? ingredients.reduce<number>((sum, item) => sum + (item.sellValue as number), 0) : null;
     const candidate: Candidate = {
       dishItemId: recipe.dishItemId,
       name: recipe.name,
-      ingredientIds: mapped.map((item) => item.itemId),
+      ingredientIds: ingredients.map((item) => item.itemId),
       sellValue: recipe.sellValue,
       ingredientSellValue,
       valueAdded: ingredientSellValue === null ? null : recipe.sellValue - ingredientSellValue,
@@ -240,6 +255,10 @@ function sortCandidates(rows: Candidate[]): Candidate[] {
     if (left.valueAdded !== null && right.valueAdded === null) return -1;
     return (right.valueAdded ?? 0) - (left.valueAdded ?? 0) || right.sellValue - left.sellValue || left.dishItemId.localeCompare(right.dishItemId);
   });
+}
+
+function isIngredientId(value: string): boolean {
+  return /^(?:crop_|fish_|meat_|produce_|brew_cooking_|brew_sour_).+/u.test(value);
 }
 
 function summarizeUnresolved(rows: Array<{ names: string[] }>): Array<{ name: string; recipeCount: number }> {

@@ -6,7 +6,7 @@ import { parseArgs } from "node:util";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
-const usage = "Usage: node scripts/call-tool.mjs <list|farm_brief|recipe_check|daily_routine> [--config /path/config.json] [--args '{}']";
+const usage = "Usage: node scripts/call-tool.mjs <list|farm_brief|recipe_check|daily_routine|fishing_trip> [--config /path/config.json] [--args '{}']";
 const projectDirectory = fileURLToPath(new URL("../", import.meta.url));
 class UsageError extends Error {}
 
@@ -27,7 +27,7 @@ async function main() {
     return;
   }
   const [tool] = parsed.positionals;
-  if (parsed.positionals.length !== 1 || !["list", "farm_brief", "recipe_check", "daily_routine"].includes(tool)) {
+  if (parsed.positionals.length !== 1 || !["list", "farm_brief", "recipe_check", "daily_routine", "fishing_trip"].includes(tool)) {
     throw new UsageError(usage);
   }
   let toolArguments;
@@ -49,7 +49,7 @@ async function main() {
     env: Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== undefined)),
     stderr: "inherit",
   });
-  const client = new Client({ name: "handytools-terminal", version: "0.1.0" });
+  const client = new Client({ name: "handytools-terminal", version: "0.2.0" });
   try {
     await client.connect(transport);
     stage = "tool discovery";

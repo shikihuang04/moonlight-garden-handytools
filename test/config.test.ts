@@ -8,7 +8,7 @@ import { loadConfig, resolveDataDirectory } from "../src/config.js";
 
 test("loads defaults and lets users independently select tools", async () => {
   const defaults = await loadConfig();
-  assert.deepEqual(defaults.enabledTools, ["daily_routine", "farm_brief", "recipe_check"]);
+  assert.deepEqual(defaults.enabledTools, ["daily_routine", "farm_brief", "recipe_check", "fishing_trip"]);
   assert.equal(defaults.recipeLedger.enabledInDailyRoutine, true);
   assert.equal(defaults.profileId, "default");
 
@@ -17,6 +17,8 @@ test("loads defaults and lets users independently select tools", async () => {
   await writeFile(configPath, JSON.stringify({ enabledTools: ["farm_brief"] }), "utf8");
   const selected = await loadConfig(configPath);
   assert.deepEqual(selected.enabledTools, ["farm_brief"]);
+  await writeFile(configPath, JSON.stringify({ enabledTools: ["fishing_trip"] }), "utf8");
+  assert.deepEqual((await loadConfig(configPath)).enabledTools, ["fishing_trip"]);
 });
 
 test("rejects unknown tools and unsafe ledger file names", async () => {

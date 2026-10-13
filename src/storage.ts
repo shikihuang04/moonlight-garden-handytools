@@ -48,6 +48,24 @@ export function isMissing(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
+// Never expire an active fishing lock merely because a slow request takes time.
+export async function withFishingLock<T>(file: string, task: () => Promise<T>): Promise<T> {
+  await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  let handle;
+  try { handle = await open(file, "wx", 0o600); }
+  catch (error) {
+    if (isExists(error)) throw new Error("fishing_trip is already running or a previous process left its lock; verify that it stopped before removing the lock.");
+    throw error;
+  }
+  try {
+    await handle.writeFile(`${process.pid}\n`, "utf8");
+    return await task();
+  } finally {
+    await handle.close();
+    await unlink(file).catch(() => undefined);
+  }
+}
+
 function isExists(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "EEXIST";
 }

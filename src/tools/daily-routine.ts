@@ -31,7 +31,7 @@ export interface DailyRoutinePayload extends Record<string, unknown> {
   resolutionRequired?: { stepId: string; choices: UnknownResolution[]; retryMayDuplicate: true };
 }
 
-const STEP_IDS = ["garden_work_1", "garden_work_2", "garden_work_3", "buy_bread_10", "fish_cast_10", "recipes_top_5", "update_recipe_ledger"] as const;
+const STEP_IDS = ["garden_work_1", "garden_work_2", "garden_work_3", "recipes_top_5", "update_recipe_ledger"] as const;
 
 export async function runDailyRoutine({
   gateway,
@@ -137,22 +137,8 @@ async function runLocked({ gateway, stateFile, ledgerFile, recipeLedgerEnabled, 
     if (step.status === "failed") return failed(payload(), step.id);
   }
 
-  const buy = state.steps[3] as RoutineStep;
-  if (!done(buy)) {
-    await callMutatingStep(gateway, "fish", { command: "buy bread 10" }, buy, persist);
-    if (buy.status === "outcome_unknown") return needsResolution(payload(), buy.id);
-    if (buy.status === "failed") return failed(payload(), buy.id);
-  }
-
-  const cast = state.steps[4] as RoutineStep;
-  if (!done(cast)) {
-    await callMutatingStep(gateway, "fish", { command: "cast 10" }, cast, persist, (data) => data.casts_remaining === 0);
-    if (cast.status === "outcome_unknown") return needsResolution(payload(), cast.id);
-    if (cast.status === "failed") return failed(payload(), cast.id);
-  }
-
   if (recipeLedgerEnabled) {
-    const recipes = state.steps[5] as RoutineStep;
+    const recipes = state.steps[3] as RoutineStep;
     if (!done(recipes)) {
       try {
         const raw = await gateway.callTool("kitchen", { command: "recipes 50" });
@@ -169,10 +155,10 @@ async function runLocked({ gateway, stateFile, ledgerFile, recipeLedgerEnabled, 
       }
     }
 
-    const ledger = state.steps[6] as RoutineStep;
+    const ledger = state.steps[4] as RoutineStep;
     if (!done(ledger)) {
       try {
-        const rows = state.steps[5]?.topRecipes ?? [];
+        const rows = state.steps[3]?.topRecipes ?? [];
         const merged = await updateRecipeLedger(ledgerFile, rows.map(recipeFromUpstream));
         ledger.status = "completed";
         ledger.result = { content: [{ type: "text", text: JSON.stringify({ ledgerFile, recipeCount: merged.length }) }] };
@@ -274,7 +260,7 @@ function normalizeState(state: RoutineState, recipeEnabled: boolean): RoutineSta
     version: 1,
     gardenDay: state.gardenDay,
     steps: STEP_IDS.map((id, index) => {
-      if (!recipeEnabled && index >= 5) return { id, status: "disabled" };
+      if (!recipeEnabled && index >= 3) return { id, status: "disabled" };
       const existing = saved.get(id);
       return existing?.status === "completed" || existing?.status === "completed_by_daily_limit" || existing?.status === "completed_by_user" || existing?.status === "outcome_unknown" ? existing : { id, status: "not_run" };
     }),
@@ -282,7 +268,7 @@ function normalizeState(state: RoutineState, recipeEnabled: boolean): RoutineSta
 }
 
 function initialSteps(recipeEnabled: boolean): RoutineStep[] {
-  return STEP_IDS.map((id, index) => ({ id, status: !recipeEnabled && index >= 5 ? "disabled" : "not_run" }));
+  return STEP_IDS.map((id, index) => ({ id, status: !recipeEnabled && index >= 3 ? "disabled" : "not_run" }));
 }
 
 function done(step: RoutineStep): boolean {

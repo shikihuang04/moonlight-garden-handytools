@@ -38,13 +38,20 @@ test("terminal caller uses the real stdio server with a local fake Garden, never
     if (message.method === "initialize") {
       result = { protocolVersion: message.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "fake-garden", version: "1" } };
     } else if (message.method === "tools/list") {
-      result = { tools: ["farm", "coop", "bee"].map((name) => ({ name, inputSchema: { type: "object" } })) };
+      result = { tools: ["farm", "coop", "bee", "pet", "kitchen", "festival", "park", "fish"].map((name) => ({ name, inputSchema: { type: "object" } })) };
     } else if (message.method === "tools/call") {
       calls.push(message.params);
       const data: Record<string, unknown> = {
         farm: { plots: [{ plot: 1, state: "mature", crop: "cabbage" }], inventory: { crop_cabbage: 2 }, water_cooldown_seconds: 0 },
         coop: { chickens: [{ index: 1, state: "hungry" }] },
         bee: { hive: [], count: "0/4", slots: 4, codex: "0/224", trips_left_today: 1, waiting: [] },
+        pet: { pets: [], slots_free: 2 },
+        kitchen: { jars: [], jars_free: 3, brews: [] },
+        festival: { festival: null },
+        park: { plays_left_today: 5, tickets: 0 },
+        fish: message.params.arguments.command === "shop"
+          ? { moon_balance: 100, bait: ["bread", "moonworm", "stardust", "moonhalo", "fullmoon"].map((key) => ({ item: `bait_${key}`, name: key, price: 5 })) }
+          : { casts_remaining: 10, bait: [] },
       };
       result = { content: [{ type: "text", text: JSON.stringify(data[message.params.name]) }], ...(failBee && message.params.name === "bee" ? { isError: true } : {}) };
     } else {
@@ -77,7 +84,7 @@ test("terminal caller uses the real stdio server with a local fake Garden, never
       assert.equal(requests, 0);
       assert.equal(result.stdout.includes(env.MOONLIGHT_GARDEN_MCP_TOKEN), false);
     });
-    await t.test("farm_brief preserves real tool output and only reads the three sources once", async () => {
+    await t.test("farm_brief preserves real tool output and reads each of the nine sources once", async () => {
       const result = await run(["farm_brief", "--config", config], env, directory);
       assert.equal(result.code, 0, result.stderr);
       const output = JSON.parse(result.stdout);
@@ -85,7 +92,7 @@ test("terminal caller uses the real stdio server with a local fake Garden, never
       assert.equal(output.structuredContent.chickens[0].status, "hungry");
       assert.equal(output.structuredContent.plots[0].maturesInSeconds, 0);
       assert.deepEqual(JSON.parse(output.content[0].text), output.structuredContent);
-      assert.deepEqual(calls.map((call) => `${call.name} ${call.arguments.command}`).sort(), ["bee status", "coop status", "farm status"]);
+      assert.deepEqual(calls.map((call) => `${call.name} ${call.arguments.command}`).sort(), ["bee status", "coop status", "farm status", "festival status", "fish shop", "fish status", "kitchen status", "park status", "pet status"]);
     });
     await t.test("partial failure retains successful sources and exits nonzero without retry", async () => {
       calls.length = 0;
@@ -96,7 +103,7 @@ test("terminal caller uses the real stdio server with a local fake Garden, never
       assert.equal(output.isError, true);
       assert.ok(output.structuredContent.errors.bee);
       assert.equal(output.structuredContent.waterCooldownSeconds, 0);
-      assert.equal(calls.length, 3);
+      assert.equal(calls.length, 9);
     });
     await t.test("disabled daily_routine never reaches Garden", async () => {
       calls.length = 0;
@@ -109,6 +116,14 @@ test("terminal caller uses the real stdio server with a local fake Garden, never
       const result = await run(["recipe_check", "--config", config], env, directory);
       assert.equal(result.code, 1);
       assert.ok(JSON.parse(result.stdout).structuredContent.errors.ledger);
+      assert.equal(calls.length, 0);
+    });
+    await t.test("terminal fishing_trip accepts arguments and zero casts without contacting Garden", async () => {
+      const fishConfig = path.join(directory, "fish.json");
+      await writeFile(fishConfig, JSON.stringify({ enabledTools: ["fishing_trip"], recipeLedger: { directory } }));
+      const result = await run(["fishing_trip", "--config", fishConfig, "--args", '{"fullmoon":0,"bread":0}'], env, directory);
+      assert.equal(result.code, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout).structuredContent.status, "noop");
       assert.equal(calls.length, 0);
     });
     await t.test("explicit recovery arguments reach daily_routine without silently running a fresh routine", async () => {

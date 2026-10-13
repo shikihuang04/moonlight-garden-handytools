@@ -44,7 +44,7 @@ export class MoonlightGardenGateway implements GardenGateway {
   }
 
   private async connect(): Promise<Client> {
-    const client = new Client({ name: "moonlight-garden-handytools", version: "0.1.0" }, { versionNegotiation: { mode: "legacy" } });
+    const client = new Client({ name: "moonlight-garden-handytools", version: "0.2.0" }, { versionNegotiation: { mode: "legacy" } });
     const headers = this.token ? { Authorization: `Bearer ${this.token}` } : undefined;
     const transport = new StreamableHTTPClientTransport(this.endpoint, headers ? { requestInit: { headers } } : undefined);
     await client.connect(transport);

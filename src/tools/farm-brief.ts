@@ -1,5 +1,6 @@
 import { evaluateCabbageFormula } from "../formula.js";
 import { parseToolData, resultFromPayload, type GardenGateway, type HandyToolResult } from "../types.js";
+import { nonnegativeInteger, readFishState, type FishBrief } from "./fish-state.js";
 
 interface PlotBrief {
   plotId: number;
@@ -52,6 +53,11 @@ export interface FarmBriefPayload extends Record<string, unknown> {
   cabbageInInventory?: number;
   cabbagePlantGap?: number;
   bees?: BeesBrief;
+  pets?: ReturnType<typeof readPets>;
+  kitchen?: ReturnType<typeof readKitchen>;
+  festival?: ReturnType<typeof readFestival>;
+  park?: ReturnType<typeof readPark>;
+  fish?: FishBrief;
   errors?: Record<string, string>;
 }
 
@@ -64,10 +70,16 @@ export async function runFarmBrief({
   cabbageFormula: string;
   now?: () => Date;
 }): Promise<HandyToolResult<FarmBriefPayload>> {
-  const [farmResult, coopResult, beeResult] = await Promise.allSettled([
+  const [farmResult, coopResult, beeResult, petResult, kitchenResult, festivalResult, parkResult, fishResult, fishShopResult] = await Promise.allSettled([
     gateway.callTool("farm", { command: "status" }),
     gateway.callTool("coop", { command: "status" }),
     gateway.callTool("bee", { command: "status" }),
+    gateway.callTool("pet", { command: "status" }),
+    gateway.callTool("kitchen", { command: "status" }),
+    gateway.callTool("festival", { command: "status" }),
+    gateway.callTool("park", { command: "status" }),
+    gateway.callTool("fish", { command: "status" }),
+    gateway.callTool("fish", { command: "shop" }),
   ]);
   const checkedAt = now();
   const payload: FarmBriefPayload = { checkedAt: checkedAt.toISOString() };
@@ -106,6 +118,29 @@ export async function runFarmBrief({
   } else {
     errors.bee = "Bee status query failed or returned invalid hive, trip, codex, or waiting-young data.";
   }
+
+  const readSource = <T>(source: string, result: PromiseSettledResult<import("../types.js").RawToolResult>, read: (data: Record<string, unknown>) => T): T | undefined => {
+    try {
+      if (result.status !== "fulfilled") throw new Error();
+      return read(parseToolData(result.value));
+    } catch {
+      errors[source] = `${source} query failed or returned invalid/unsupported status data.`;
+      return undefined;
+    }
+  };
+  const pets = readSource("pet", petResult, readPets);
+  const kitchen = readSource("kitchen", kitchenResult, readKitchen);
+  const festival = readSource("festival", festivalResult, readFestival);
+  const park = readSource("park", parkResult, readPark);
+  if (pets) payload.pets = pets;
+  if (kitchen) payload.kitchen = kitchen;
+  if (festival) payload.festival = festival;
+  if (park) payload.park = park;
+  const fish = readSource("fish", fishResult, (status) => {
+    if (fishShopResult.status !== "fulfilled") throw new Error();
+    return readFishState(status, parseToolData(fishShopResult.value));
+  });
+  if (fish) payload.fish = fish;
 
   if (payload.chickenCount !== undefined && payload.cabbageInInventory !== undefined) {
     try {
@@ -282,4 +317,72 @@ function readTextList(value: unknown): string[] {
 
 function asObject(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function readPets(data: Record<string, unknown>) {
+  if (!Array.isArray(data.pets)) throw new Error();
+  const residents = data.pets.map((value) => {
+    const pet = asObject(value);
+    if (!pet || typeof pet.named !== "boolean" || typeof pet.tended_today !== "boolean") throw new Error();
+    return { petId: requiredText(pet.id), name: requiredText(pet.name), named: pet.named,
+      species: requiredText(pet.species), kind: requiredText(pet.kind), looks: requiredText(pet.looks),
+      rawStage: requiredText(pet.stage), tendedToday: pet.tended_today, needsTend: !pet.tended_today, statusText: requiredText(pet.doing) };
+  });
+  return { count: residents.length, slotsFree: nonnegativeInteger(data.slots_free), residents, doorstep: readDoorstep(data) };
+}
+
+function readDoorstep(data: Record<string, unknown>): Record<string, unknown> {
+  if (data.at_the_door !== undefined) {
+    const visitor = asObject(data.at_the_door);
+    requiredText(visitor?.keep_with);
+    return { state: "visitor", statusText: requiredText(visitor?.looks) };
+  }
+  const hint = data.hint === undefined ? "" : requiredText(data.hint);
+  const news = data.news === undefined ? [] : readTextList(data.news);
+  const statusText = [...news, hint].filter(Boolean).join("\n");
+  if (data.offering !== undefined) {
+    const offering = asObject(data.offering);
+    return { state: "baited", baitItem: requiredText(offering?.item), location: requiredText(offering?.where), statusText: requiredText(offering?.hint) };
+  }
+  if (hint === '有东西来过但没现身。再放一次它就会留下：pet("leave <物品>")') {
+    return { state: "tracks", needsSecondOffering: true, statusText };
+  }
+  const emptyHint = (data.pets as unknown[]).length === 0
+    ? hint === '还没有伙伴。放一样东西在外面招它：pet("leave <物品>")——根茎果实招毛绒的，花和蜜招鸟，鱼和肉招鳞甲的，蛋两边都招'
+    : hint === "今天都陪过了。明天再来" || hint === '陪它一会儿：pet("tend <食材>")，喂它那一类吃的东西，蛋谁都吃';
+  return emptyHint && news.length === 0 ? { state: "empty" } : { state: "unknown", statusText };
+}
+
+function readKitchen(data: Record<string, unknown>) {
+  if (!Array.isArray(data.jars) || !Array.isArray(data.brews)) throw new Error();
+  const jarsFree = nonnegativeInteger(data.jars_free);
+  const stages: Record<string, string> = {
+    "还只是一坛料，别动它": "waiting", "有气泡声了，再等等": "waiting",
+    "有酒香了——可以开了": "mellow", "酒香很浓，开始有点酸——再不开就成醋了": "nearly_sour",
+  };
+  const occupied = new Map(data.jars.map((value) => {
+    const jar = asObject(value);
+    if (!jar || !Number.isInteger(jar.jar) || (jar.jar as number) < 1 || (jar.jar as number) > 3) throw new Error();
+    const scentText = requiredText(jar.smell);
+    return [jar.jar as number, { jarId: jar.jar as number, brewing: requiredText(jar.brewing), ingredients: readTextList(jar.ingredients),
+      sealedDaysAgo: nonnegativeInteger(jar.sealed_days_ago), stage: stages[scentText] ?? "unknown", scentText }] as const;
+  }));
+  if (occupied.size !== data.jars.length || jarsFree !== 3 - occupied.size) throw new Error();
+  return {
+    jarsFree, jars: [1, 2, 3].map((jarId) => occupied.get(jarId) ?? { jarId, stage: "empty" }),
+    brews: data.brews.map((value) => {
+      const brew = asObject(value);
+      return { item: requiredText(brew?.item), name: requiredText(brew?.name), sellValue: nonnegativeInteger(brew?.sell_value), quantity: nonnegativeInteger(brew?.quantity) };
+    }),
+  };
+}
+
+function readFestival(data: Record<string, unknown>) {
+  if (data.festival === null) return { active: null };
+  const active = asObject(data.festival);
+  return { active: { key: requiredText(active?.key), name: requiredText(active?.name), ends: requiredText(active?.ends) } };
+}
+
+function readPark(data: Record<string, unknown>) {
+  return { playsLeftToday: nonnegativeInteger(data.plays_left_today), tickets: nonnegativeInteger(data.tickets) };
 }

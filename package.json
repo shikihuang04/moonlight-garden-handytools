@@ -1,6 +1,6 @@
 {
   "name": "moonlight-garden-handytools",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Independent MCP handy tools for Moonlight Garden.",
   "license": "MIT",
   "private": true,
@@ -9,7 +9,7 @@
     "moonlight-garden-handytools": "dist/index.js"
   },
   "main": "dist/index.js",
-  "files": ["dist", "scripts/call-tool.mjs", "README.md", "LICENSE", "config.example.json", "recipe-ledger.example.md"],
+  "files": ["dist", "scripts/call-tool.mjs", "README.md", "CHANGELOG.md", "LICENSE", "config.example.json", "recipe-ledger.example.md"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",

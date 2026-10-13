@@ -21,7 +21,7 @@ export interface HandyToolResult<T extends Record<string, unknown>> {
   isError?: boolean;
 }
 
-export type ToolName = "daily_routine" | "farm_brief" | "recipe_check";
+export type ToolName = "daily_routine" | "farm_brief" | "recipe_check" | "fishing_trip";
 
 export function resultFromPayload<T extends Record<string, unknown>>(payload: T, isError = false): HandyToolResult<T> {
   return {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -126,7 +126,7 @@ test("recipe_check preserves an auto-claimed gift receipt when inventory items a
   await writeLedger(ledgerFile, []);
   const gateway = baseGateway();
   gateway.set("inventory list", raw({
-    items: [{ item: "broken" }],
+    items: [{ item: "crop_broken", name: "缺数量和售价" }],
     received_gifts: [{ from: "朋友", item: "crop_cabbage", item_name: "白菜", quantity: 2 }],
   }));
   const result = await runRecipeCheck({ gateway, ledgerFile, now: () => new Date("2026-09-11T07:08:09Z") });
@@ -139,4 +139,68 @@ test("recipe_check preserves an auto-claimed gift receipt when inventory items a
     itemName: "白菜",
     quantity: 2,
   }]);
+});
+
+test("recipe_check resolves cooking wine/vinegar and exact item IDs, excludes drinking wine, and preserves inventory prices", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "handytools-check-"));
+  const ledgerFile = path.join(directory, "recipes.md");
+  await writeLedger(ledgerFile, [
+    { dishItemId: "dish_wine", name: "料酒蒸蛋", ingredientNames: ["料酒", "produce_egg"], sellValue: 100 },
+    { dishItemId: "dish_vinegar", name: "醋萝卜", ingredientNames: ["brew_sour_sample", "胡萝卜"], sellValue: 110 },
+    { dishItemId: "dish_missing_id", name: "待料肉", ingredientNames: ["meat_authoritative", "鸡蛋"], sellValue: 200 },
+    { dishItemId: "dish_ambiguous", name: "重名菜", ingredientNames: ["重名料酒"], sellValue: 210 },
+    { dishItemId: "dish_unknown", name: "未知兽菜", ingredientNames: ["毕方", "饮用酒"], sellValue: 999 },
+    { dishItemId: "dish_duplicate", name: "重复蛋", ingredientNames: ["鸡蛋", "produce_egg"], sellValue: 500 },
+  ]);
+  const gateway = baseGateway();
+  gateway.set("inventory list", raw({ items: [
+    { item: "brew_cooking_sample", name: "料酒", quantity: 99, sell_value: 25 },
+    { item: "brew_sour_sample", name: "醋", quantity: 1, sell_value: 20 },
+    { item: "brew_full_sample", name: "饮用酒" },
+    { item: "brew_light_sample", name: "淡酒" },
+    { item: "crop_carrot", name: "胡萝卜", quantity: 2, sell_value: 10 },
+    { item: "produce_egg", name: "鸡蛋", quantity: 1, sell_value: 18 },
+    { item: "brew_cooking_a", name: "重名料酒", quantity: 1, sell_value: 10 },
+    { item: "brew_cooking_b", name: "重名料酒", quantity: 1, sell_value: 10 },
+  ] }));
+  const payload = (await runRecipeCheck({ gateway, ledgerFile })).structuredContent;
+  assert.equal(payload.usedLatest50Fallback, false);
+  assert.deepEqual(payload.cookableNow?.map((row) => [row.dishItemId, row.ingredientSellValue, row.valueAdded]), [
+    ["dish_vinegar", 30, 80], ["dish_wine", 43, 57],
+  ]);
+  assert.equal(payload.missingOne?.[0]?.missingIngredientId, "meat_authoritative");
+  assert.equal(payload.missingOne?.[0]?.valueAdded, null);
+  assert.equal(payload.missingOne?.[0]?.valueAddedStatus, "missingIngredientSellValueUnavailable");
+  assert.equal(payload.unresolvedRecipeCount, 3);
+  assert.ok(payload.unresolvedIngredientSummary?.some((row) => row.name === "毕方"));
+});
+
+test("latest50 authoritative IDs can replace an unresolved ledger row of the same dish without writing the ledger", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "handytools-check-"));
+  const ledgerFile = path.join(directory, "recipes.md");
+  await writeLedger(ledgerFile, [{ dishItemId: "dish_same", name: "旧名蛋", ingredientNames: ["旧材料名"], sellValue: 50 }]);
+  const before = await readFile(ledgerFile, "utf8");
+  const gateway = baseGateway([{ item: "dish_same", name: "新数据蛋", ingredients: ["produce_egg"], sell_value: 80 }]);
+  const payload = (await runRecipeCheck({ gateway, ledgerFile })).structuredContent;
+  assert.equal(payload.usedLatest50Fallback, true);
+  assert.equal(payload.cookableNow?.[0]?.source, "latest50Fallback");
+  assert.equal(payload.cookableNow?.[0]?.valueAdded, 62);
+  assert.equal(payload.unresolvedRecipeCount, 0);
+  assert.equal(await readFile(ledgerFile, "utf8"), before);
+});
+
+test("recipe results stay capped at five, ranked by added value, and quota zero does not mean material shortage", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "handytools-check-"));
+  const ledgerFile = path.join(directory, "recipes.md");
+  await writeLedger(ledgerFile, Array.from({ length: 8 }, (_, index) => ({
+    dishItemId: `dish_${index}`, name: `蛋菜${index}`, ingredientNames: ["鸡蛋"], sellValue: 50 + index,
+  })));
+  const gateway = baseGateway();
+  gateway.set("kitchen status", raw({ cooks_remaining: 0 }));
+  const payload = (await runRecipeCheck({ gateway, ledgerFile })).structuredContent;
+  assert.equal(payload.remainingCookCount, 0);
+  assert.equal(payload.canCookAnyNow, false);
+  assert.equal(payload.usedLatest50Fallback, false);
+  assert.equal(payload.cookableNow?.length, 5);
+  assert.deepEqual(payload.cookableNow?.map((row) => row.valueAdded), [39, 38, 37, 36, 35]);
 });

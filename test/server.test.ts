@@ -8,6 +8,38 @@ import { FakeGateway } from "./helpers.js";
 test("each handy tool can be registered independently", () => {
   assert.deepEqual(enabledToolNames({ enabledTools: ["farm_brief"] }), ["farm_brief"]);
   assert.deepEqual(enabledToolNames({ enabledTools: ["daily_routine", "recipe_check"] }), ["daily_routine", "recipe_check"]);
+  assert.deepEqual(enabledToolNames({ enabledTools: ["fishing_trip"] }), ["fishing_trip"]);
+});
+
+test("MCP fishing discovery explicitly advertises automatic moon purchases and accepts zero counts without actions", async () => {
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const gateway = new FakeGateway({});
+  const server = createServer({
+    enabledTools: ["fishing_trip"], profileId: "default", storageDirectory: "/tmp/handytools-test/profiles/default",
+    recipeLedger: { enabledInDailyRoutine: false, directory: "/tmp/handytools-test", fileName: "recipes.md" },
+    farmBrief: { cabbagePlantGapFormula: "chickenCount * 2 - cabbageInInventory" },
+  }, gateway);
+  const client = new Client({ name: "handytools-test", version: "1.0.0" });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    const tool = (await client.listTools()).tools[0]!;
+    assert.equal(tool.name, "fishing_trip");
+    assert.match(tool.description ?? "", /automatically spends moon to buy missing bait from the shop/iu);
+    assert.match(tool.description ?? "", /SUM ALL missing-bait costs/iu);
+    assert.match(tool.description ?? "", /remainingCastCountBefore.*PRE-execution/iu);
+    assert.match(tool.description ?? "", /purchaseTotalsComplete:false.*only confirmed/iu);
+    assert.equal(tool.annotations?.destructiveHint, true);
+    assert.equal(tool.annotations?.idempotentHint, false);
+    assert.deepEqual(Object.keys(tool.inputSchema.properties ?? {}), ["bread", "moonworm", "stardust", "moonhalo", "fullmoon"]);
+    assert.equal(tool.inputSchema.additionalProperties, false);
+    const result = await client.callTool({ name: "fishing_trip", arguments: {} });
+    assert.equal(result.structuredContent?.status, "noop");
+    assert.equal(gateway.calls.length, 0);
+    const invalid = await client.callTool({ name: "fishing_trip", arguments: { bread: -1 } });
+    assert.equal(invalid.isError, true);
+    assert.equal(gateway.calls.length, 0);
+  } finally { await client.close(); await server.close(); }
 });
 
 test("MCP initialize and tools/list expose only configured tools", async () => {

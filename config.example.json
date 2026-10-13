@@ -1,6 +1,6 @@
 {
   "profileId": "default",
-  "enabledTools": ["daily_routine", "farm_brief", "recipe_check"],
+  "enabledTools": ["daily_routine", "farm_brief", "recipe_check", "fishing_trip"],
   "recipeLedger": {
     "enabledInDailyRoutine": true,
     "directory": null,

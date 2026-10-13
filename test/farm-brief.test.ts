@@ -32,7 +32,15 @@ const HOME_BEES = {
 };
 
 function gatewayWithBees(results: Record<string, ReturnType<typeof raw> | Error>, bees: ReturnType<typeof raw> | Error = raw(HOME_BEES)): FakeGateway {
-  return new FakeGateway({ ...results, "bee status": bees });
+  return new FakeGateway({
+    "pet status": raw({ pets: [], slots_free: 2, hint: "尚无已核对提示" }),
+    "kitchen status": raw({ jars: [], jars_free: 3, brews: [] }),
+    "festival status": raw({ festival: null }),
+    "park status": raw({ plays_left_today: 5, tickets: 0 }),
+    "fish status": raw({ casts_remaining: 10, bait: [] }),
+    "fish shop": raw({ moon_balance: 100, bait: ["bread", "moonworm", "stardust", "moonhalo", "fullmoon"].map((key) => ({ item: `bait_${key}`, name: key, price: 5 })) }),
+    ...results, "bee status": bees,
+  });
 }
 
 test("farm_brief returns UTC status, cumulative windows, watering data and a configurable cabbage gap", async () => {
@@ -104,6 +112,12 @@ test("farm_brief returns UTC status, cumulative windows, watering data and a con
     { name: "farm", arguments: { command: "status" } },
     { name: "coop", arguments: { command: "status" } },
     { name: "bee", arguments: { command: "status" } },
+    { name: "pet", arguments: { command: "status" } },
+    { name: "kitchen", arguments: { command: "status" } },
+    { name: "festival", arguments: { command: "status" } },
+    { name: "park", arguments: { command: "status" } },
+    { name: "fish", arguments: { command: "status" } },
+    { name: "fish", arguments: { command: "shop" } },
   ]);
 });
 
@@ -188,4 +202,55 @@ test("farm_brief omits bees on a failed source or unknown trip state while prese
     assert.deepEqual(result.structuredContent.plots, []);
     assert.equal(result.structuredContent.chickenCount, 0);
   }
+});
+
+test("farm_brief includes pets, empty jar IDs, scent stages, festival, park tickets and all five bait stocks without actions", async () => {
+  const gateway = gatewayWithBees({
+    "farm status": raw({ plots: [], inventory: {}, water_cooldown_seconds: 0 }),
+    "coop status": raw({ chickens: [] }),
+    "pet status": raw({ pets: [{ id: "pet_sample", name: "伙伴", named: true, species: "bird", kind: "毛羽", looks: "圆圆", stage: "young", tended_today: true, doing: "打盹" }], slots_free: 1,
+      hint: "今天都陪过了。明天再来", at_the_door: { looks: "门口新访客", keep_with: "鸡蛋" } }),
+    "kitchen status": raw({ jars_free: 1, jars: [
+      { jar: 1, brewing: "样例酿", ingredients: ["胡萝卜"], sealed_days_ago: 2, smell: "有酒香了——可以开了" },
+      { jar: 3, brewing: "另一坛", ingredients: ["白菜"], sealed_days_ago: 4, smell: "未见过的味道" },
+    ], brews: [{ item: "brew_cooking_sample", name: "料酒", sell_value: 42, quantity: 2 }] }),
+    "festival status": raw({ festival: { key: "sample", name: "样例节日", ends: "2026-10-20" } }),
+    "park status": raw({ plays_left_today: 0, tickets: 17 }),
+    "fish status": raw({ casts_remaining: 4, bait: [{ key: "bread", quantity: 3 }, { key: "fullmoon", quantity: 1 }] }),
+  });
+  const payload = (await runFarmBrief({ gateway, cabbageFormula: "chickenCount * 2 - cabbageInInventory" })).structuredContent;
+  assert.equal(payload.errors, undefined);
+  assert.equal(payload.pets?.residents[0]?.needsTend, false);
+  assert.deepEqual(payload.pets?.doorstep, { state: "visitor", statusText: "门口新访客" });
+  assert.equal(payload.kitchen?.jarsFree, 1);
+  assert.deepEqual(payload.kitchen?.jars[1], { jarId: 2, stage: "empty" });
+  assert.equal(payload.kitchen?.jars[0]?.stage, "mellow");
+  assert.equal(payload.kitchen?.jars[2]?.stage, "unknown");
+  assert.equal(payload.kitchen?.brews[0]?.sellValue, 42);
+  assert.deepEqual(payload.festival, { active: { key: "sample", name: "样例节日", ends: "2026-10-20" } });
+  assert.deepEqual(payload.park, { playsLeftToday: 0, tickets: 17 });
+  assert.equal(payload.fish?.remainingCastCount, 4);
+  assert.equal(payload.fish?.moonBalance, 100);
+  assert.deepEqual(payload.fish?.baits.map((row) => [row.key, row.itemId, row.quantity]), [
+    ["bread", "bait_bread", 3], ["moonworm", "bait_moonworm", 0], ["stardust", "bait_stardust", 0], ["moonhalo", "bait_moonhalo", 0], ["fullmoon", "bait_fullmoon", 1],
+  ]);
+  assert.equal(gateway.calls.some((call) => call.name === "inventory" || /buy|cast|send|settle|play/u.test(String(call.arguments.command))), false);
+});
+
+test("new brief source failures omit whole blocks without discarding successful park/farm data", async () => {
+  const gateway = gatewayWithBees({
+    "farm status": raw({ plots: [], inventory: {}, water_cooldown_seconds: 0 }),
+    "coop status": raw({ chickens: [] }),
+    "pet status": new Error("offline"),
+    "kitchen status": raw({ jars_free: 3, jars: [{ jar: 1 }], brews: [] }),
+    "festival status": raw({}),
+    "fish shop": new Error("offline"),
+  });
+  const result = await runFarmBrief({ gateway, cabbageFormula: "chickenCount * 2 - cabbageInInventory" });
+  for (const [source, field] of [["pet", "pets"], ["kitchen", "kitchen"], ["festival", "festival"], ["fish", "fish"]]) {
+    assert.ok(result.structuredContent.errors?.[source!]);
+    assert.equal(field! in result.structuredContent, false);
+  }
+  assert.deepEqual(result.structuredContent.park, { playsLeftToday: 5, tickets: 0 });
+  assert.deepEqual(result.structuredContent.plots, []);
 });

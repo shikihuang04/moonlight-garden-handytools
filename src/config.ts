@@ -5,7 +5,7 @@ import * as z from "zod/v4";
 
 import type { ToolName } from "./types.js";
 
-const ToolNameSchema = z.enum(["daily_routine", "farm_brief", "recipe_check"]);
+const ToolNameSchema = z.enum(["daily_routine", "farm_brief", "recipe_check", "fishing_trip"]);
 const ConfigInputSchema = z.object({
   profileId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u).refine((value) => value !== "." && value !== "..").optional(),
   enabledTools: z.array(ToolNameSchema).min(1).optional(),
@@ -55,7 +55,7 @@ export async function loadConfig(configPath?: string): Promise<HandyToolsConfig>
   return {
     profileId,
     storageDirectory: path.join(directory, "profiles", profileId),
-    enabledTools: [...new Set<ToolName>(input.enabledTools ?? ["daily_routine", "farm_brief", "recipe_check"])],
+    enabledTools: [...new Set<ToolName>(input.enabledTools ?? ["daily_routine", "farm_brief", "recipe_check", "fishing_trip"])],
     recipeLedger: {
       enabledInDailyRoutine: input.recipeLedger?.enabledInDailyRoutine ?? true,
       directory,
