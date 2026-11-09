@@ -15,7 +15,7 @@ export function enabledToolNames(config: Pick<HandyToolsConfig, "enabledTools">)
 }
 
 export function createServer(config: HandyToolsConfig, gateway: GardenGateway): McpServer {
-  const server = new McpServer({ name: "moonlight-garden-handytools", version: "0.2.0" }, { capabilities: { tools: {} } });
+  const server = new McpServer({ name: "moonlight-garden-handytools", version: "0.3.0" }, { capabilities: { tools: {} } });
   const directory = config.storageDirectory;
   const ledgerFile = path.join(directory, config.recipeLedger.fileName);
   const stateFile = path.join(directory, "daily-routine-state.json");
@@ -34,9 +34,9 @@ export function createServer(config: HandyToolsConfig, gateway: GardenGateway): 
   if (config.enabledTools.includes("farm_brief")) {
     server.registerTool("farm_brief", {
       title: "Moonlight Garden Farm Brief",
-      description: "Read and compress farm, watering, chicken, configurable cabbage-gap, bee-hive, bee-trip, and waiting-young state; pets/doorstep, all three kitchen jars (including empty IDs), brews, current festival, park plays/tickets and fish remaining casts/wallet/five bait IDs, names, unit prices and inventory. Queries farm/coop/bee/pet/kitchen/festival/park/fish status and fish shop only; never buys bait, fishes, tends pets, opens jars, plays park games or performs garden/bee actions, and never calls inventory list. pet status implicit overnight settlement is not yet confirmed. UTC checkedAt is an aggregation basis, not a simultaneous upstream snapshot; textual countdowns are approximate. maturesIfWateredPlotIds contains only 1–1800-second plots; also check watering cooldown. Bee backAt is null if upstream lacks an absolute time; backInText retains its countdown. Unknown jar scent stays unknown. Source failures omit the affected block and report errors, retaining other blocks. No action recommendations.",
+      description: "Read and compress farm, watering, chicken, configurable cabbage-gap, bee-hive, bee-trip, and waiting-young state; pets/doorstep, all dynamically counted kitchen jars (including empty IDs), brews, current festival, park plays/tickets and fish remaining casts/wallet/five bait IDs, names, unit prices and inventory. Queries farm/coop/bee/pet/kitchen/festival/park/fish status and fish shop only; never buys bait, fishes, tends pets, opens jars, plays park games or performs garden/bee actions, and never calls inventory list. pet status implicit overnight settlement is not yet confirmed. UTC checkedAt is an aggregation basis, not a simultaneous upstream snapshot; textual countdowns are approximate. maturesIfWateredPlotIds uses current sky.weather: rain includes 1–3600 seconds, otherwise 1–1800; absent weather omits prediction with errors.waterPrediction; also check watering cooldown. Bee backAt is null if upstream lacks an absolute time; backInText retains its countdown. Confirmed vinegar scent maps to sour and fresh cheese scent to fresh_cheese, without guessing products, quantities or prices; unknown scent stays unknown. cows contains count and animals with authoritative cowId/name/label/rawState/statusText, no guessed exact milk time; errors.cows omits only cows. The default-on farmBrief.cabbageHintEnabled switch disables both cabbage inventory and gap without removing chicken data. Source failures omit the affected block and report errors, retaining other blocks. No action recommendations.",
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    }, async () => runFarmBrief({ gateway, cabbageFormula: config.farmBrief.cabbagePlantGapFormula }));
+    }, async () => runFarmBrief({ gateway, cabbageFormula: config.farmBrief.cabbagePlantGapFormula, cabbageHintEnabled: config.farmBrief.cabbageHintEnabled }));
   }
 
   if (config.enabledTools.includes("recipe_check")) {

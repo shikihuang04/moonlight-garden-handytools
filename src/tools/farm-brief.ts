@@ -53,6 +53,7 @@ export interface FarmBriefPayload extends Record<string, unknown> {
   cabbageInInventory?: number;
   cabbagePlantGap?: number;
   bees?: BeesBrief;
+  cows?: ReturnType<typeof readCows>;
   pets?: ReturnType<typeof readPets>;
   kitchen?: ReturnType<typeof readKitchen>;
   festival?: ReturnType<typeof readFestival>;
@@ -64,10 +65,12 @@ export interface FarmBriefPayload extends Record<string, unknown> {
 export async function runFarmBrief({
   gateway,
   cabbageFormula,
+  cabbageHintEnabled = true,
   now = () => new Date(),
 }: {
   gateway: GardenGateway;
   cabbageFormula: string;
+  cabbageHintEnabled?: boolean;
   now?: () => Date;
 }): Promise<HandyToolResult<FarmBriefPayload>> {
   const [farmResult, coopResult, beeResult, petResult, kitchenResult, festivalResult, parkResult, fishResult, fishShopResult] = await Promise.allSettled([
@@ -88,7 +91,7 @@ export async function runFarmBrief({
   if (farmResult.status === "fulfilled") {
     try {
       const farm = parseToolData(farmResult.value);
-      readFarm(farm, checkedAt, payload, errors);
+      readFarm(farm, checkedAt, payload, errors, cabbageHintEnabled);
     } catch {
       errors.farm = "Farm status query failed or returned invalid data.";
     }
@@ -129,6 +132,8 @@ export async function runFarmBrief({
     }
   };
   const pets = readSource("pet", petResult, readPets);
+  const cows = readSource("cows", coopResult, readCows);
+  if (cows) payload.cows = cows;
   const kitchen = readSource("kitchen", kitchenResult, readKitchen);
   const festival = readSource("festival", festivalResult, readFestival);
   const park = readSource("park", parkResult, readPark);
@@ -153,13 +158,10 @@ export async function runFarmBrief({
   return resultFromPayload(payload, Object.keys(errors).length > 0);
 }
 
-function readFarm(farm: Record<string, unknown>, checkedAt: Date, payload: FarmBriefPayload, errors: Record<string, string>): void {
+function readFarm(farm: Record<string, unknown>, checkedAt: Date, payload: FarmBriefPayload, errors: Record<string, string>, cabbageHintEnabled: boolean): void {
   try {
     const plots = readPlots(farm);
     payload.plots = plots;
-    payload.maturesIfWateredPlotIds = plots
-      .filter((plot) => plot.maturesInSeconds !== null && plot.maturesInSeconds >= 1 && plot.maturesInSeconds <= 1800)
-      .map((plot) => plot.plotId);
     payload.maturingWithinHours = {
       "1": futurePlots(plots, 3600),
       "2": futurePlots(plots, 7200),
@@ -169,6 +171,12 @@ function readFarm(farm: Record<string, unknown>, checkedAt: Date, payload: FarmB
     errors.farm = "Farm status contains invalid plot data.";
   }
 
+  if (payload.plots) try {
+    const weather = requiredText(asObject(farm.sky)?.weather);
+    const advance = weather === "rain" ? 3600 : 1800;
+    payload.maturesIfWateredPlotIds = payload.plots.filter(p => p.maturesInSeconds !== null && p.maturesInSeconds >= 1 && p.maturesInSeconds <= advance).map(p => p.plotId);
+  } catch { errors.waterPrediction = "Farm status is missing valid current weather."; }
+
   const cooldown = farm.water_cooldown_seconds;
   if (typeof cooldown === "number" && Number.isFinite(cooldown) && cooldown >= 0) {
     payload.waterCooldownSeconds = Math.ceil(cooldown);
@@ -177,6 +185,7 @@ function readFarm(farm: Record<string, unknown>, checkedAt: Date, payload: FarmB
     errors.water = "Farm status is missing a valid watering cooldown.";
   }
 
+  if (!cabbageHintEnabled) return;
   const inventory = asObject(farm.inventory);
   if (inventory) {
     const cabbage = Object.hasOwn(inventory, "crop_cabbage") ? inventory.crop_cabbage : 0;
@@ -353,23 +362,39 @@ function readDoorstep(data: Record<string, unknown>): Record<string, unknown> {
   return emptyHint && news.length === 0 ? { state: "empty" } : { state: "unknown", statusText };
 }
 
+function readCows(data: Record<string, unknown>) {
+  if (!Array.isArray(data.cows)) throw new Error();
+  const seen = new Set<number>();
+  const animals = data.cows.map(value => {
+    const cow = asObject(value);
+    const id = cow?.index;
+    if (!cow || !Number.isInteger(id) || (id as number) < 1 || seen.has(id as number)) throw new Error();
+    seen.add(id as number);
+    return { cowId: id as number, name: cow.name === null ? null : requiredText(cow.name), label: cow.label === null ? null : requiredText(cow.label), rawState: requiredText(cow.state), statusText: requiredText(cow.status) };
+  });
+  return { count: animals.length, animals };
+}
+
 function readKitchen(data: Record<string, unknown>) {
   if (!Array.isArray(data.jars) || !Array.isArray(data.brews)) throw new Error();
   const jarsFree = nonnegativeInteger(data.jars_free);
+  const jarCount = data.jars.length + jarsFree;
   const stages: Record<string, string> = {
     "还只是一坛料，别动它": "waiting", "有气泡声了，再等等": "waiting",
     "有酒香了——可以开了": "mellow", "酒香很浓，开始有点酸——再不开就成醋了": "nearly_sour",
+    "已经是醋味了，开吧，醋也能下锅": "sour",
+    "结成块了，一股新鲜的奶味——现在开是鲜的，也可以再放放": "fresh_cheese",
   };
   const occupied = new Map(data.jars.map((value) => {
     const jar = asObject(value);
-    if (!jar || !Number.isInteger(jar.jar) || (jar.jar as number) < 1 || (jar.jar as number) > 3) throw new Error();
+    if (!jar || !Number.isInteger(jar.jar) || (jar.jar as number) < 1 || (jar.jar as number) > jarCount) throw new Error();
     const scentText = requiredText(jar.smell);
     return [jar.jar as number, { jarId: jar.jar as number, brewing: requiredText(jar.brewing), ingredients: readTextList(jar.ingredients),
       sealedDaysAgo: nonnegativeInteger(jar.sealed_days_ago), stage: stages[scentText] ?? "unknown", scentText }] as const;
   }));
-  if (occupied.size !== data.jars.length || jarsFree !== 3 - occupied.size) throw new Error();
+  if (occupied.size !== data.jars.length) throw new Error();
   return {
-    jarsFree, jars: [1, 2, 3].map((jarId) => occupied.get(jarId) ?? { jarId, stage: "empty" }),
+    jarsFree, jars: Array.from({ length: jarCount }, (_, i) => occupied.get(i + 1) ?? { jarId: i + 1, stage: "empty" }),
     brews: data.brews.map((value) => {
       const brew = asObject(value);
       return { item: requiredText(brew?.item), name: requiredText(brew?.name), sellValue: nonnegativeInteger(brew?.sell_value), quantity: nonnegativeInteger(brew?.quantity) };

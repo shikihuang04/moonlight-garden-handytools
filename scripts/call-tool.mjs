@@ -49,7 +49,7 @@ async function main() {
     env: Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== undefined)),
     stderr: "inherit",
   });
-  const client = new Client({ name: "handytools-terminal", version: "0.2.0" });
+  const client = new Client({ name: "handytools-terminal", version: "0.3.0" });
   try {
     await client.connect(transport);
     stage = "tool discovery";

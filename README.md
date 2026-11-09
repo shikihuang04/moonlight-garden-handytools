@@ -1,6 +1,6 @@
 # moonlight-garden-handytools
 
-版本：`0.2.0`
+版本：`0.3.0`
 
 月光花园游戏地址：[moonlightgarden.space](https://moonlightgarden.space/)
 
@@ -13,7 +13,7 @@
 | 工具 | 做什么 | 是否执行游戏动作 |
 | --- | --- | --- |
 | `daily_routine` | 打零工三次，可选读取最新 50 道菜、取售价前 5 并更新本地贵菜账 | 会打工；**不再买鱼饵或钓鱼** |
-| `farm_brief` | 汇总土地、浇水、鸡舍、蜜蜂、伙伴、酒坛、节日、公园和五种鱼饵状态 | 只查询，不调用动作命令；上游 `pet status` 的隐式结算行为未得到确认 |
+| `farm_brief` | 汇总土地、浇水、鸡舍、小牛、蜜蜂、伙伴、酒坛、节日、公园和五种鱼饵状态 | 只查询，不调用动作命令；上游 `pet status` 的隐式结算行为未得到确认 |
 | `recipe_check` | 匹配贵菜账与实时背包，按单次增值返回可做／缺一种材料的候选 | 不做菜、不卖菜；背包查询可能自动领取待领礼物 |
 | `fishing_trip` | 按五种鱼饵各自的杆数，补买缺饵并逐杆钓鱼，保留每一步结果 | **会自动消耗 moon 从商店买鱼饵，并消耗鱼饵和今日钓鱼次数** |
 
@@ -40,6 +40,7 @@
 | **开关菜谱拉取与贵菜账记录** | `recipeLedger.enabledInDailyRoutine` | 一个总开关：两项一起开、一起关 |
 | **修改贵菜账保存路径** | `recipeLedger.directory` | 所有 profile 的存储根目录；绝对路径，或 `null` 使用系统默认目录 |
 | **修改贵菜账文件名** | `recipeLedger.fileName` | 普通文件名，不含目录 |
+| **关闭／开启白菜提示** | `farmBrief.cabbageHintEnabled` | 默认 `true`；`false` 隐藏白菜库存和缺口，鸡和牛照常显示 |
 | **修改白菜缺口公式** | `farmBrief.cabbagePlantGapFormula` | 默认 `chickenCount * 2 - cabbageInInventory`；保留正负值 |
 | 选择接入哪些工具 | `enabledTools` | 四个工具独立注册；可以只启用一个 |
 | 隔离多个花园账号 | `profileId` | 本地账号标签，每个账号应使用不同值 |
@@ -118,6 +119,7 @@ cp config.example.json moonlight-garden-handytools.config.json
     "fileName": "moonlight-garden-expensive-recipes.md"
   },
   "farmBrief": {
+    "cabbageHintEnabled": true,
     "cabbagePlantGapFormula": "chickenCount * 2 - cabbageInInventory"
   }
 }
@@ -147,6 +149,8 @@ profiles/default/
 ```
 
 锁文件通常只在对应工具执行时存在；`.bak` 是写账前的备份。钓鱼锁不因时间久自动过期：进程异常退出留下锁时，先确认原进程确实停止，再移除该 profile 的 `fishing-trip.lock`；不要删每日记录来强行重跑。
+
+`farmBrief.cabbageHintEnabled` 默认开启，旧配置无需新增字段即可沿用。设为 `false` 后不读取或校验白菜库存，不计算公式，也不返回 `cabbageInInventory`、`cabbagePlantGap`；原公式保留，再开启时继续使用。更改配置后重载 MCP 服务。
 
 白菜公式支持数字、`chickenCount`、`cabbageInInventory`、括号和 `+ - * /`，由受限解析器计算，不执行 JavaScript。例如改为 `chickenCount * 3 - cabbageInInventory`。工具只返回数值，不自动补种；0 或负数不代表需要补种，不额外推算将来的喂鸡消耗。
 
@@ -264,16 +268,19 @@ Agent 必须说明风险并由用户明确选择，不能自己代选：
 | `maturingWithinHours` | 累计 1/2/4 小时未来成熟地块 ID；已成熟不进入 |
 | 浇水 | `waterCooldownSeconds`、UTC `waterAvailableAt`、`maturesIfWateredPlotIds` |
 | 鸡舍／白菜 | `chickens / chickenCount / cabbageInInventory / cabbagePlantGap` |
+| `cows` | 牛数 `count`，以及每头牛的 `cowId/name/label/rawState/statusText`；复用 coop status |
 | `bees` | 数量、容量、今日采蜜次数、出行状态、图鉴、蜂箱和门口幼蜂 |
 | `pets` | `count / slotsFree / residents / doorstep` |
-| `kitchen` | `jarsFree / jars / brews`，**全部三个坛位，包括空坛编号** |
+| `kitchen` | `jarsFree / jars / brews`，**动态显示全部坛位，包括扩容后的坛和空坛编号** |
 | `festival` | 当前 `active`，没有节日时为 `null`，不预告／推造日期 |
 | `park` | `playsLeftToday` 和持有奖券数 `tickets`（不是今天赚的数量） |
 | `fish` | `remainingCastCount / moonBalance / baits`：五种鱼饵的 `key / itemId / name / unitPrice / quantity` |
 
-空地成熟时间 `null`，已熟为 0，生长中为正数；1 小时内成熟也进入 2 和 4 小时列表。`maturesIfWateredPlotIds` 仅列剩余 1—1800 秒、浇水会立刻成熟的地块；不等于现在可浇水，另看冷却。
+空地成熟时间 `null`，已熟为 0，生长中为正数；1 小时内成熟也进入 2 和 4 小时列表。`maturesIfWateredPlotIds` 根据当前 `farm status.sky.weather`：雨天 `rain` 为 1—3600 秒，其他有效天气为 1—1800 秒，两端均包含；是否现在可浇水另看冷却。天气缺失／无效时省略预测列表并返回 `errors.waterPrediction`，土地和冷却照常返回，不把未知当空列表。
 
 鸡饥饿时 `eggReadyInSeconds:null`，蛋待收为 0，正在下蛋为正数；使用权威鸡编号。土地 `cropId`（如 `polar_grape`）与背包材料 ID（如 `crop_polar_grape`）不是同一个字符串，不能直接混用。
+
+小牛的 `rawState` 保留上游值（已见 `making/ready/hungry`），`statusText` 原样保留，包括近似倒计时。不从文字或旧喂食回执生成精确产奶时间，不喂牛或挤奶。缺失／无效 cows 写入 `errors.cows` 并省略牛区块；合法空数组才代表零头，鸡和牛独立解析。
 
 ### 蜜蜂
 
@@ -285,7 +292,9 @@ Agent 必须说明风险并由用户明确选择，不能自己代选：
 
 伙伴 `residents` 含 `petId/name/named/species/kind/looks/rawStage/tendedToday/needsTend/statusText`；`needsTend` 仅表示今天没陪过。门口有 `at_the_door` 优先返回 `doorstep.state:"visitor"`，不会被“今天都陪过了”误盖为空；其余已观察状态包括 `baited / tracks / empty / unknown`，陌生提示保留文字，不猜行动。
 
-空坛仅 `{"jarId":2,"stage":"empty"}`；在酿坛保留 `brewing / ingredients / sealedDaysAgo / scentText`，按已核对气味概括 `waiting / mellow / nearly_sour`，陌生文案为 `unknown`。不预测成熟时刻，不自动开坛，也不依据未经核对的气味文案判定最终成醋状态。
+空坛仅 `{"jarId":2,"stage":"empty"}`；在酿坛保留 `brewing / ingredients / sealedDaysAgo / scentText`，按已核对气味概括 `waiting / mellow / nearly_sour / sour / fresh_cheese`，陌生文案为 `unknown`。仅将已核实的完整气味原句映射为成醋或鲜酪阶段，不预测成熟时刻、不自动开坛，不推算成品 ID、名称、数量或售价。半陈／陈年及陌生奶酪气味仍保留原文与 `unknown`。
+
+总坛数按上游占用坛数加 `jars_free` 计算，按从 1 开始的连续编号补空坛；不再固定为三坛。编号重复、超出推导容量或空位数无效时返回 `errors.kitchen`。
 
 不返回偷菜／摸蛋和帮收快枯萎作物的今日剩余次数：上游查询缺少权威计数，不按每日上限伪造剩余次数。
 
@@ -410,7 +419,17 @@ node --env-file=.env scripts/call-tool.mjs fishing_trip --config moonlight-garde
 
 ## 版本发布与升级
 
-`0.2.0` 对应标签 `v0.2.0`。每个版本使用独立的标签和 GitHub Release，保留旧标签／Release／附件，不将旧包替换成新内容。用户自行选择下载并升级，不强制自动更新。
+`0.3.0` 对应标签 `v0.3.0`。每个版本使用独立的标签和 GitHub Release，保留旧标签／Release／附件，不将旧包替换成新内容。用户自行选择下载并升级，不强制自动更新。
+
+### 从 0.2.0 升级
+
+可直接升级，无需迁移配置、贵菜账或每日记录。先停止旧 MCP 服务并确认没有动作请求仍在执行，再下载新 Release 到新目录，执行 `npm ci` 和 `npm run build`，将客户端启动路径切到新目录，`--config` 继续指向原配置。
+
+**不要用配置样例覆盖原配置，不要覆盖 `.env`、自建启动脚本、贵菜账、每日记录或整个 profile 数据目录。** 保留原 `profileId`、账本路径／文件名、自定义公式及菜谱总开关；四个工具的启用选择不会被改写。新白菜开关不填写默认开启，需要时再加入 `"cabbageHintEnabled": false`。
+
+也可只覆盖程序文件后重新安装依赖、构建，但仍须保留个人文件。升级不重置当天已完成日常或未知动作记录。新旧版本不要同时运行同一个 profile；回退 0.2.0 前移除新增的 `cabbageHintEnabled` 配置项（旧版严格校验配置），保留其余配置和数据，不用旧样例覆盖。
+
+`daily_routine` 仍不钓鱼；`fishing_trip` 仍会自动花 moon 补买缺饵。升级验收用工具列表或零杆钓鱼，不用实际打工、购买、钓鱼测试连接。
 
 ### 从 0.1.x 升级
 
@@ -425,18 +444,25 @@ node --env-file=.env scripts/call-tool.mjs fishing_trip --config moonlight-garde
 
 改回旧版本并非恢复游戏动作；旧日常仍会买饵／钓鱼，且新状态已不保存废弃步骤。**不要在同一天用旧日常重复验收或跨版本来回执行**。需要回退时先核验上游状态与备份，不盲目恢复旧记录或重试未知动作。
 
+## 连接错误诊断
+
+连接或工具请求抛异常时，stderr 记录脱敏诊断：连接阶段 `connect`／工具请求阶段 `tool_request`，以及可用的 HTTP 状态、白名单网络错误码或超时类型。不输出 URL、token、请求参数、响应正文或原始异常文字；无法确认的错误使用通用类型。诊断本身不重放动作。连接失败不缓存失败客户端，后续显式调用可以重新连接。未知动作结果仍应核验状态后再决定下一次操作。
+
 ## 开发与验证
 
 按修改范围选择相关测试，不必每次全仓运行：
 
 ```sh
-node --import tsx --test test/fishing-trip.test.ts test/daily-routine.test.ts test/farm-brief.test.ts test/recipe-check.test.ts test/server.test.ts test/config.test.ts
+node --import tsx --test test/farm-brief.test.ts test/farm-brief-030.test.ts test/gateway.test.ts test/daily-routine.test.ts test/server.test.ts test/config.test.ts
 npm run check
 npm run build
 node --import tsx --test test/terminal.test.ts
+node scripts/verify-upgrade-020-030.mjs
 ```
 
 测试使用本地模拟上游和隔离的测试目录，不执行真实打工、购买、钓鱼、领奖或游戏动作。模拟测试通过不代表所有 MCP 客户端均已完成兼容性验证。
+
+升级演练脚本需要 Git 仓库内存在 v0.2.0 标签；它在临时目录独立安装两个版本，并验证新目录切换、覆盖程序文件、原配置／账本／每日记录保留和未知动作不重放。npm 可能联网下载依赖，但脚本不使用真实花园连接。0.3.0 的演练环境为 macOS / Node.js 24，Windows 和 Android 未实测。
 
 ## License
 

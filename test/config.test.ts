@@ -11,6 +11,7 @@ test("loads defaults and lets users independently select tools", async () => {
   assert.deepEqual(defaults.enabledTools, ["daily_routine", "farm_brief", "recipe_check", "fishing_trip"]);
   assert.equal(defaults.recipeLedger.enabledInDailyRoutine, true);
   assert.equal(defaults.profileId, "default");
+  assert.equal(defaults.farmBrief.cabbageHintEnabled, true);
 
   const directory = await mkdtemp(path.join(os.tmpdir(), "handytools-config-"));
   const configPath = path.join(directory, "config.json");
@@ -25,6 +26,7 @@ test("rejects unknown tools and unsafe ledger file names", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "handytools-config-"));
   for (const value of [
     { enabledTools: ["unknown"] },
+    { farmBrief: { cabbageHintEnabled: "false" } },
     { recipeLedger: { fileName: "../private.md" } },
     { profileId: "../other-account" },
     { recipeLedger: { directory: "relative/data" } },

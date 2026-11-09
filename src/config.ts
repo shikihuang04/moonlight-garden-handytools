@@ -15,6 +15,7 @@ const ConfigInputSchema = z.object({
     fileName: z.string().min(1).max(180).optional(),
   }).strict().optional(),
   farmBrief: z.object({
+    cabbageHintEnabled: z.boolean().optional(),
     cabbagePlantGapFormula: z.string().min(1).max(200).optional(),
   }).strict().optional(),
 }).strict();
@@ -24,7 +25,7 @@ export interface HandyToolsConfig {
   storageDirectory: string;
   enabledTools: ToolName[];
   recipeLedger: { enabledInDailyRoutine: boolean; directory: string; fileName: string };
-  farmBrief: { cabbagePlantGapFormula: string };
+  farmBrief: { cabbagePlantGapFormula: string; cabbageHintEnabled: boolean };
 }
 
 export class ConfigurationError extends Error {
@@ -62,6 +63,7 @@ export async function loadConfig(configPath?: string): Promise<HandyToolsConfig>
       fileName,
     },
     farmBrief: {
+      cabbageHintEnabled: input.farmBrief?.cabbageHintEnabled ?? true,
       cabbagePlantGapFormula: input.farmBrief?.cabbagePlantGapFormula ?? "chickenCount * 2 - cabbageInInventory",
     },
   };

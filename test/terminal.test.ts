@@ -42,8 +42,8 @@ test("terminal caller uses the real stdio server with a local fake Garden, never
     } else if (message.method === "tools/call") {
       calls.push(message.params);
       const data: Record<string, unknown> = {
-        farm: { plots: [{ plot: 1, state: "mature", crop: "cabbage" }], inventory: { crop_cabbage: 2 }, water_cooldown_seconds: 0 },
-        coop: { chickens: [{ index: 1, state: "hungry" }] },
+        farm: { sky: { weather: "clear" }, plots: [{ plot: 1, state: "mature", crop: "cabbage" }], inventory: { crop_cabbage: 2 }, water_cooldown_seconds: 0 },
+        coop: { cows: [], chickens: [{ index: 1, state: "hungry" }] },
         bee: { hive: [], count: "0/4", slots: 4, codex: "0/224", trips_left_today: 1, waiting: [] },
         pet: { pets: [], slots_free: 2 },
         kitchen: { jars: [], jars_free: 3, brews: [] },
@@ -148,6 +148,18 @@ test("terminal caller uses the real stdio server with a local fake Garden, never
       assert.match(result.stderr, /MOONLIGHT_GARDEN_MCP_URL is required/);
       assert.equal(result.stderr.includes(env.MOONLIGHT_GARDEN_MCP_TOKEN), false);
       assert.equal(calls.length, 0);
+    });
+    await t.test("JSON cabbage switch reaches the real MCP tool and preserves other blocks", async () => {
+      failBee = false;
+      const offConfig = path.join(directory, "cabbage-off.json");
+      await writeFile(offConfig, JSON.stringify({ enabledTools: ["farm_brief"], farmBrief: { cabbageHintEnabled: false, cabbagePlantGapFormula: "invalid" } }));
+      const result = await run(["farm_brief", "--config", offConfig], env, directory);
+      assert.equal(result.code, 0, result.stderr);
+      const data = JSON.parse(result.stdout).structuredContent;
+      assert.equal("cabbageInInventory" in data, false);
+      assert.equal("cabbagePlantGap" in data, false);
+      assert.equal(data.chickenCount, 1);
+      assert.deepEqual(data.cows, { count: 0, animals: [] });
     });
   } finally {
     garden.closeAllConnections();

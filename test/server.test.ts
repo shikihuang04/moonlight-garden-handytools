@@ -17,7 +17,7 @@ test("MCP fishing discovery explicitly advertises automatic moon purchases and a
   const server = createServer({
     enabledTools: ["fishing_trip"], profileId: "default", storageDirectory: "/tmp/handytools-test/profiles/default",
     recipeLedger: { enabledInDailyRoutine: false, directory: "/tmp/handytools-test", fileName: "recipes.md" },
-    farmBrief: { cabbagePlantGapFormula: "chickenCount * 2 - cabbageInInventory" },
+    farmBrief: { cabbageHintEnabled: true, cabbagePlantGapFormula: "chickenCount * 2 - cabbageInInventory" },
   }, gateway);
   const client = new Client({ name: "handytools-test", version: "1.0.0" });
   await server.connect(serverTransport);
@@ -49,7 +49,7 @@ test("MCP initialize and tools/list expose only configured tools", async () => {
     profileId: "default",
     storageDirectory: "/tmp/handytools-test/profiles/default",
     recipeLedger: { enabledInDailyRoutine: false, directory: "/tmp/handytools-test", fileName: "recipes.md" },
-    farmBrief: { cabbagePlantGapFormula: "chickenCount * 2 - cabbageInInventory" },
+    farmBrief: { cabbageHintEnabled: true, cabbagePlantGapFormula: "chickenCount * 2 - cabbageInInventory" },
   }, new FakeGateway({}));
   const client = new Client({ name: "handytools-test", version: "1.0.0" });
   await server.connect(serverTransport);
@@ -72,7 +72,7 @@ test("daily_routine advertises explicit recovery choices for unknown outcomes", 
     profileId: "default",
     storageDirectory: "/tmp/handytools-test/profiles/default",
     recipeLedger: { enabledInDailyRoutine: false, directory: "/tmp/handytools-test", fileName: "recipes.md" },
-    farmBrief: { cabbagePlantGapFormula: "chickenCount * 2 - cabbageInInventory" },
+    farmBrief: { cabbageHintEnabled: true, cabbagePlantGapFormula: "chickenCount * 2 - cabbageInInventory" },
   }, new FakeGateway({}));
   const client = new Client({ name: "handytools-test", version: "1.0.0" });
   await server.connect(serverTransport);

@@ -45,7 +45,7 @@ function gatewayWithBees(results: Record<string, ReturnType<typeof raw> | Error>
 
 test("farm_brief returns UTC status, cumulative windows, watering data and a configurable cabbage gap", async () => {
   const gateway = gatewayWithBees({
-    "farm status": raw({
+    "farm status": raw({ sky: { weather: "clear" },
       plots: [
         { plot: 1, state: "growing", crop: "phantom_shroom", matures_in_seconds: 1800 },
         { plot: 2, state: "house" },
@@ -56,7 +56,7 @@ test("farm_brief returns UTC status, cumulative windows, watering data and a con
       inventory: { crop_cabbage: 1 },
       water_cooldown_seconds: 90.2,
     }),
-    "coop status": raw({ chickens: [
+    "coop status": raw({ cows: [], chickens: [
       { index: 1, state: "laying", status: "正在下蛋，还要 2 分" },
       { index: 2, state: "hungry" },
     ] }),
@@ -123,7 +123,7 @@ test("farm_brief returns UTC status, cumulative windows, watering data and a con
 
 test("farm_brief omits only failed sources and never invents a cabbage gap", async () => {
   const gateway = gatewayWithBees({
-    "farm status": raw({ plots: [], inventory: {}, water_cooldown_seconds: 0 }),
+    "farm status": raw({ sky: { weather: "clear" }, plots: [], inventory: {}, water_cooldown_seconds: 0 }),
     "coop status": new Error("private detail"),
   });
   const result = await runFarmBrief({ gateway, cabbageFormula: "chickenCount * 2 - cabbageInInventory" });
@@ -137,8 +137,8 @@ test("farm_brief omits only failed sources and never invents a cabbage gap", asy
 
 test("invalid custom formula is isolated as its own source error", async () => {
   const gateway = gatewayWithBees({
-    "farm status": raw({ plots: [], inventory: { crop_cabbage: 1 }, water_cooldown_seconds: 0 }),
-    "coop status": raw({ chickens: [] }),
+    "farm status": raw({ sky: { weather: "clear" }, plots: [], inventory: { crop_cabbage: 1 }, water_cooldown_seconds: 0 }),
+    "coop status": raw({ cows: [], chickens: [] }),
   });
   const result = await runFarmBrief({ gateway, cabbageFormula: "Math.max(chickenCount, 0)" });
   assert.ok(result.structuredContent.errors?.cabbagePlantGapFormula);
@@ -147,8 +147,8 @@ test("invalid custom formula is isolated as its own source error", async () => {
 
 test("farm_brief distinguishes bees away from bees ready to settle", async () => {
   const sources = {
-    "farm status": raw({ plots: [], inventory: {}, water_cooldown_seconds: 0 }),
-    "coop status": raw({ chickens: [] }),
+    "farm status": raw({ sky: { weather: "clear" }, plots: [], inventory: {}, water_cooldown_seconds: 0 }),
+    "coop status": raw({ cows: [], chickens: [] }),
   };
   const traveling = await runFarmBrief({
     gateway: gatewayWithBees(sources, raw({
@@ -185,8 +185,8 @@ test("farm_brief distinguishes bees away from bees ready to settle", async () =>
 
 test("farm_brief omits bees on a failed source or unknown trip state while preserving other sources", async () => {
   const sources = {
-    "farm status": raw({ plots: [], inventory: {}, water_cooldown_seconds: 0 }),
-    "coop status": raw({ chickens: [] }),
+    "farm status": raw({ sky: { weather: "clear" }, plots: [], inventory: {}, water_cooldown_seconds: 0 }),
+    "coop status": raw({ cows: [], chickens: [] }),
   };
   for (const beeResult of [
     new Error("private upstream detail"),
@@ -206,8 +206,8 @@ test("farm_brief omits bees on a failed source or unknown trip state while prese
 
 test("farm_brief includes pets, empty jar IDs, scent stages, festival, park tickets and all five bait stocks without actions", async () => {
   const gateway = gatewayWithBees({
-    "farm status": raw({ plots: [], inventory: {}, water_cooldown_seconds: 0 }),
-    "coop status": raw({ chickens: [] }),
+    "farm status": raw({ sky: { weather: "clear" }, plots: [], inventory: {}, water_cooldown_seconds: 0 }),
+    "coop status": raw({ cows: [], chickens: [] }),
     "pet status": raw({ pets: [{ id: "pet_sample", name: "伙伴", named: true, species: "bird", kind: "毛羽", looks: "圆圆", stage: "young", tended_today: true, doing: "打盹" }], slots_free: 1,
       hint: "今天都陪过了。明天再来", at_the_door: { looks: "门口新访客", keep_with: "鸡蛋" } }),
     "kitchen status": raw({ jars_free: 1, jars: [
@@ -239,8 +239,8 @@ test("farm_brief includes pets, empty jar IDs, scent stages, festival, park tick
 
 test("new brief source failures omit whole blocks without discarding successful park/farm data", async () => {
   const gateway = gatewayWithBees({
-    "farm status": raw({ plots: [], inventory: {}, water_cooldown_seconds: 0 }),
-    "coop status": raw({ chickens: [] }),
+    "farm status": raw({ sky: { weather: "clear" }, plots: [], inventory: {}, water_cooldown_seconds: 0 }),
+    "coop status": raw({ cows: [], chickens: [] }),
     "pet status": new Error("offline"),
     "kitchen status": raw({ jars_free: 3, jars: [{ jar: 1 }], brews: [] }),
     "festival status": raw({}),
